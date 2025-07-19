@@ -27,7 +27,7 @@ class GPUThermalEvent(Base):
     id = Column(Integer, primary_key=True)
     node = Column(String(50), nullable=False)
     gpu_id = Column(String(50), nullable=False)
-    timestamp = Column(DateTime, nullable=False)
+    timestamp = Column(DateTime, nullable=False, primary_key=True)
     temperature = Column(Float)
     avg_temperature = Column(Float)
     issue_type = Column(String(20), nullable=False)  # 'throttled' or 'failed'
@@ -61,19 +61,48 @@ class DatabaseManager:
     def init_database(self):
         """Initialize database connection and create tables with TimescaleDB"""
         try:
-            # Create tables
-            Base.metadata.create_all(bind=self.engine)
-            
-            # Initialize TimescaleDB extension and create hypertable
+            # Initialize TimescaleDB extension first
             with self.engine.connect() as conn:
                 # Enable TimescaleDB extension
                 conn.execute(text("CREATE EXTENSION IF NOT EXISTS timescaledb"))
+                conn.commit()
+            
+            # Create tables
+            Base.metadata.create_all(bind=self.engine)
+            
+            # Initialize TimescaleDB hypertable
+            with self.engine.connect() as conn:
+                # Drop the table if it exists to recreate it properly for TimescaleDB
+                conn.execute(text("DROP TABLE IF EXISTS gpu_thermal_events CASCADE"))
+                conn.commit()
+                
+                # Create the table without primary key constraint for TimescaleDB
+                conn.execute(text("""
+                    CREATE TABLE gpu_thermal_events (
+                        id SERIAL,
+                        node VARCHAR(50) NOT NULL,
+                        gpu_id VARCHAR(50) NOT NULL,
+                        timestamp TIMESTAMPTZ NOT NULL,
+                        temperature FLOAT,
+                        avg_temperature FLOAT,
+                        issue_type VARCHAR(20) NOT NULL,
+                        reason VARCHAR(100),
+                        date TIMESTAMPTZ,
+                        created_at TIMESTAMPTZ DEFAULT NOW()
+                    )
+                """))
                 
                 # Convert to hypertable for time-series optimization
                 conn.execute(text("""
                     SELECT create_hypertable('gpu_thermal_events', 'timestamp', 
                                            if_not_exists => TRUE,
                                            chunk_time_interval => INTERVAL '1 day')
+                """))
+                
+                # Add primary key constraint after hypertable creation
+                conn.execute(text("""
+                    ALTER TABLE gpu_thermal_events 
+                    ADD CONSTRAINT gpu_thermal_events_pkey PRIMARY KEY (id, timestamp)
                 """))
                 
                 # Create indexes for better performance
