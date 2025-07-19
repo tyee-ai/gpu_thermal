@@ -17,11 +17,15 @@ import json
 def create_dashboard():
     """Create and configure the Dash dashboard"""
     
-    # Initialize Dash app
+    # Initialize Dash app with proper asset configuration
     app = dash.Dash(__name__, 
                     external_stylesheets=[
                         'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css'
-                    ])
+                    ],
+                    assets_folder='assets',
+                    serve_locally=False,
+                    url_base_pathname='/',
+                    suppress_callback_exceptions=True)
     
     # Dashboard layout
     app.layout = html.Div([
